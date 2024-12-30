@@ -160,14 +160,18 @@ class Converter(converter.BaseConverter):
         processed_content = re.sub(r"&lt;", r"<", processed_content,re.UNICODE)
         return processed_content
 
-    def deduplicate_note_title(self, parent_notebook: imf.Notebook , note_imf: imf.Note, includes_date = False):
+    def deduplicate_note_title(self, parent_notebook: imf.Notebook , note_imf: imf.Note, includes_date: bool = False, max_name_length: int = 50):
         # ensure note title is unique
-        if note_imf.title in [note.title for note in parent_notebook.child_notes]:
+        if note_imf.title[:max_name_length] in [note.title[:max_name_length] for note in parent_notebook.child_notes]:
             # title already exists, so need to de-dupe
             if includes_date:
                 self.logger.warning(f'Note already exists, so adding created timestamp (H-M): {note_imf.title}')
                 note_imf.title += " " + note_imf.created.strftime("%H%M")
             else:
+                # truncate string's last 10 chars before adding date
+                if len(note_imf.title) >= max_name_length:
+                    self.logger.warning(f"Truncating title as length exceeds {max_name_length}")
+                    note_imf.title = note_imf.title[:max_name_length - 11]
                 self.logger.warning(f'Note already exists, so adding created timestamp (m-d-Y): {note_imf.title}')
                 note_imf.title += " " + note_imf.created.strftime("%m-%d-%Y")
                 self.deduplicate_note_title(parent_notebook, note_imf, includes_date = True)

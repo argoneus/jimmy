@@ -174,15 +174,15 @@ class FilesystemImporter:
         if "tags" in self.progress_bars:
             self.progress_bars["tags"].update(len(note.tags))
         assert note.path is not None
-        if note.path.exists():
+        #if note.path.exists():
             #LOGGER.warning(f"File path exists, skipping: {note.path}")
-            return
-        else:
-            LOGGER.debug(f"Writing file: {note.path}")
-            note.path.write_text(
-                note.get_finalized_body(self.include_title, self.frontmatter),
-                encoding="utf-8",
-            )
+        #    return
+        #else:
+        #LOGGER.debug(f"Writing file: {note.path}")
+        note.path.write_text(
+            note.get_finalized_body(self.include_title, self.frontmatter),
+            encoding="utf-8",
+        )
 
     @common.catch_all_exceptions
     def import_note(self, note: imf.Note):
@@ -204,7 +204,7 @@ class FilesystemImporter:
         notebook.path.mkdir(exist_ok=True, parents=True)
         LOGGER.debug(f"Writing {len(notebook.child_notes)} notes from {notebook.title}")
         for idx, note in enumerate(notebook.child_notes):
-            LOGGER.debug(f"Writing {idx}: {note.path}")
+            #LOGGER.debug(f"Writing {idx}: {note.path}")
             self.import_note(note)
         for child_notebook in notebook.child_notebooks:
             self.import_notebook(child_notebook)
