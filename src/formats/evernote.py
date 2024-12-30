@@ -142,7 +142,7 @@ class Converter(converter.BaseConverter):
                             setattr(
                                 note_imf,
                                 note_element.tag,
-                                dt.datetime.fromisoformat(note_element.text),
+                                dt.datetime.fromisoformat(note_element.text).astimezone(),
                             )
                         except ValueError:
                             self.logger.debug("couldn't parse date")
@@ -183,7 +183,8 @@ class Converter(converter.BaseConverter):
                             )
                     case "tag":
                         if isinstance(note_element.text, str):
-                            note_imf.tags.append(imf.Tag(note_element.text))
+                            note_imf.tags.append(imf.Tag(imf.normalize_obsidian_tag(note_element.text)))
+                            self.logger.debug(f'Appending {imf.normalize_obsidian_tag(note_element.text)}')
                     case "task":
                         status_element = note_element.find("taskStatus")
                         bullet = (

@@ -354,4 +354,6 @@ def date_to_unix_ms(date_: dt.date) -> int:
 
 
 def timestamp_to_datetime(timestamp_s: int | float) -> dt.datetime:
-    return dt.datetime.fromtimestamp(timestamp_s, dt.UTC)
+    # add astimezone() to convert to local timestamp to match original
+    # encoded created/updated datetimes.
+    return dt.datetime.fromtimestamp(timestamp_s, dt.UTC).astimezone()

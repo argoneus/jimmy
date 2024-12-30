@@ -6,10 +6,13 @@ import dataclasses
 import datetime as dt
 from pathlib import Path
 import re
+import logging
 
 import frontmatter
 
 import common
+
+LOGGER = logging.getLogger("jimmy")
 
 
 OBSIDIAN_TAG_REGEX = re.compile(r"[^\w/_-]", re.UNICODE)
@@ -34,7 +37,9 @@ def normalize_obsidian_tag(tag: str) -> str:
     >>> normalize_obsidian_tag("y1984")
     'y1984'
     """
-    valid_char_tag = OBSIDIAN_TAG_REGEX.sub("_", tag)
+    # substite + with 'and'
+    valid_char_tag = re.compile(r"[+]", re.UNICODE).sub("and", tag)
+    valid_char_tag = OBSIDIAN_TAG_REGEX.sub("_", valid_char_tag)
     if valid_char_tag.isdigit():
         valid_char_tag += "_"
     return valid_char_tag
@@ -156,6 +161,7 @@ class Note:
                             continue  # included elsewhere or no metadata
                         case "tags":
                             metadata["tags"] = [tag.title for tag in self.tags]
+                            #LOGGER.debug(f'Tags: {metadata["tags"]}')
                         case _:
                             if (value := getattr(self, field.name)) is not None:
                                 metadata[field.name] = value

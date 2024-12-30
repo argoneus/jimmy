@@ -145,6 +145,35 @@ class Converter(converter.BaseConverter):
                     break
         return resources
 
+    def postprocess_onenote_notes(self, note_content: str) -> str:
+        # remove all blank lines.  With OneNote converted notes in Synology Notes,
+        # legitimate blank lines from the original note content contain a space.
+        despaced_content = re.compile(r"\n+", re.UNICODE).sub('\n', note_content)
+        # first line is the title, so use h1
+        processed_content = f'# {despaced_content}'
+        # make the next two lines bold (date and time)
+        processed_content = re.sub(r"\n(.*)",r"\n**\1**", processed_content, 2, re.UNICODE)
+        # add a blank line after the title, date, and time header
+        processed_content = re.sub(r"(\*\*[0-9]+:[0-9]+\s+[A|P]M\*\*)\n", r"\1\n\n", processed_content, 1, re.UNICODE)
+        # convert "&gt;" and "&lt;" to > and <
+        processed_content = re.sub(r"&gt;", r">", processed_content, flags=re.UNICODE)
+        processed_content = re.sub(r"&lt;", r"<", processed_content,re.UNICODE)
+        return processed_content
+
+    def deduplicate_note_title(self, parent_notebook: imf.Notebook , note_imf: imf.Note, includes_date = False):
+        # ensure note title is unique
+        if note_imf.title in [note.title for note in parent_notebook.child_notes]:
+            # title already exists, so need to de-dupe
+            if includes_date:
+                self.logger.warning(f'Note already exists, so adding created timestamp (H-M): {note_imf.title}')
+                note_imf.title += " " + note_imf.created.strftime("%H%M")
+            else:
+                self.logger.warning(f'Note already exists, so adding created timestamp (m-d-Y): {note_imf.title}')
+                note_imf.title += " " + note_imf.created.strftime("%m-%d-%Y")
+                self.deduplicate_note_title(parent_notebook, note_imf, includes_date = True)
+        else:
+            return
+
     @common.catch_all_exceptions
     def convert_note(self, note_id, note_id_title_map):
         note = json.loads((self.root_path / note_id).read_text(encoding="utf-8"))
@@ -159,15 +188,27 @@ class Converter(converter.BaseConverter):
         resources = self.map_resources_by_hash(note)
 
         note_links: imf.NoteLinks = []
+        onenote = False
         if (content_html := note.get("content")) is not None:
             content_html = streamline_html(content_html)
+            # replace empty divs with a space for easier postprocessing and to retain original
+            # Synology Notes format line spacing.
+            content_html = re.sub(r"<div></div>", "<div>&nbsp;</div>", content_html, re.UNICODE)
             content_markdown = markdown_lib.common.markup_to_markdown(content_html)
-            # note title only needed for debug message
+            content_md_cleaned = ""
+            if re.search(r"Created with OneNote", content_markdown):
+                onenote = True
+                #self.logger.debug(f"Handling OneNote note: {title}")
+                content_md_cleaned = self.postprocess_onenote_notes(content_markdown)
+            else:
+                content_md_cleaned = re.compile(r"\n+", re.UNICODE).sub('\n', content_markdown)
+                #content_md_cleaned = content_markdown
+             # note title only needed for debug message
             resources_referenced, note_links = self.handle_markdown_links(
-                note["title"], content_markdown, note_id_title_map
+                note["title"], content_md_cleaned, note_id_title_map
             )
             resources.extend(resources_referenced)
-            body = content_markdown
+            body = content_md_cleaned
         else:
             body = ""
 
@@ -177,17 +218,25 @@ class Converter(converter.BaseConverter):
             created=common.timestamp_to_datetime(note["ctime"]),
             updated=common.timestamp_to_datetime(note["mtime"]),
             source_application=self.format,
-            tags=[imf.Tag(tag) for tag in note.get("tag", [])],
+            tags=[imf.Tag(imf.normalize_obsidian_tag(tag)) for tag in note.get("tag", [])],
             resources=resources,
             note_links=note_links,
             original_id=note_id,
         )
+        if onenote:
+            note_imf.tags.append(imf.Tag("OneNote"))
+        #self.logger.debug(f'Note tags: {note_imf.tags}')
         if (latitude := note.get("latitude")) is not None:
             note_imf.latitude = latitude
         if (longitude := note.get("longitude")) is not None:
             note_imf.longitude = longitude
 
         parent_notebook = self.find_parent_notebook(note["parent_id"])
+#        if note_imf.title in [note.title for note in parent_notebook.child_notes]:
+#            # title already exists, so need to de-dupe
+#            self.logger.warning(f'Note already exists, so adding created timestamp: {note_imf.title}')
+#            note_imf.title += " " + note_imf.created.strftime("%m-%d-%Y")
+        self.deduplicate_note_title(parent_notebook, note_imf)
         parent_notebook.child_notes.append(note_imf)
 
     def convert(self, file_or_folder: Path):
