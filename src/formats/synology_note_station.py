@@ -27,7 +27,7 @@ class Attachment:
 def streamline_html(content_html: str) -> str:
     # hack: In the original data, the attachment_id is stored in the
     # "ref" attribute. Mitigate by storing it in the "src" attribute.
-    content_html = re.sub("<img.*?ref=", "<img src=", content_html)
+    content_html = re.sub("<img.*?ref=", "<img src=", content_html,flags=re.DOTALL)
 
     # another hack: make the first row of a table to the header
     soup = BeautifulSoup(content_html, "html.parser")
@@ -178,6 +178,16 @@ class Converter(converter.BaseConverter):
         else:
             return
 
+    def clean_task_note(self, note_content: str) -> str:
+       # fix formatting of some recent task notes due to dark mode reader browser plugin
+       # remove all bold and existing headers (#)
+       debold_content = re.sub(r"(\*\*)|(#+\s)", r"", note_content, re.UNICODE)
+       # ensure header is h1
+       hdr_content = re.sub(r"(.*)\n", r"# \1\n", debold_content, 1, re.UNICODE)
+       # ensure week lines are headers
+       hdr_content = re.sub(r"(First|Second|Third|Fourth|Fifth)\s*([W|w]eek)", r"# \1 \2", hdr_content, re.UNICODE)
+       return hdr_content
+
     @common.catch_all_exceptions
     def convert_note(self, note_id, note_id_title_map):
         note = json.loads((self.root_path / note_id).read_text(encoding="utf-8"))
@@ -206,6 +216,12 @@ class Converter(converter.BaseConverter):
                 content_md_cleaned = self.postprocess_onenote_notes(content_markdown)
             else:
                 content_md_cleaned = re.compile(r"\n+", re.UNICODE).sub('\n', content_markdown)
+                # convert "&gt;" and "&lt;" to > and <
+                content_md_cleaned = re.sub(r"&gt;", r">", content_md_cleaned, flags=re.UNICODE)
+                content_md_cleaned = re.sub(r"&lt;", r"<", content_md_cleaned,re.UNICODE)
+                if re.search(r"First (W|w)eek", content_md_cleaned):
+                    self.logger.debug(f"Cleaning task note: {title}")
+                    content_md_cleaned = self.clean_task_note(content_md_cleaned)
                 #content_md_cleaned = content_markdown
              # note title only needed for debug message
             resources_referenced, note_links = self.handle_markdown_links(
