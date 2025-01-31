@@ -87,6 +87,24 @@ class Converter(converter.BaseConverter):
         for notebook in root_notebook.child_notebooks:
             self.link_notes_by_title(notebook)
 
+    def deduplicate_note_title(self, parent_notebook: imf.Notebook , note_imf: imf.Note, includes_date: bool = False, max_name_length: int = 50):
+        # ensure note title is unique
+        if note_imf.title[:max_name_length] in [note.title[:max_name_length] for note in parent_notebook.child_notes]:
+            # title already exists, so need to de-dupe
+            if includes_date:
+                self.logger.warning(f'Note already exists, so adding created timestamp (H-M): {note_imf.title}')
+                note_imf.title += " " + note_imf.created.strftime("%H%M")
+            else:
+                # truncate string's last 10 chars before adding date
+                if len(note_imf.title) >= max_name_length:
+                    self.logger.warning(f"Truncating title as length exceeds {max_name_length}")
+                    note_imf.title = note_imf.title[:max_name_length - 11]
+                self.logger.warning(f'Note already exists, so adding created timestamp (m-d-Y): {note_imf.title}')
+                note_imf.title += " " + note_imf.created.strftime("%m-%d-%Y")
+                self.deduplicate_note_title(parent_notebook, note_imf, includes_date = True)
+        else:
+            return
+
     @common.catch_all_exceptions
     def convert_single_enex(self, file_or_folder: Path, parent_notebook: imf.Notebook):
         self.logger.debug(f'Converting file "{file_or_folder.name}"')
@@ -241,6 +259,7 @@ class Converter(converter.BaseConverter):
                 note_imf.body = note_imf.body.replace(
                     f"tasklist://{group_id}", "\n" + tasks_sorted_md
                 )
+            self.deduplicate_note_title(parent_notebook, note_imf)
             parent_notebook.child_notes.append(note_imf)
 
     def convert(self, file_or_folder: Path):
